@@ -357,12 +357,14 @@ impl AtCoder {
         let mut inputs = vec![];
         let mut outputs = vec![];
         if let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                if let Ok(f) = File::open(format!(
-                    "{}/{}",
-                    dir.to_string_lossy(),
-                    entry.file_name().to_string_lossy()
-                )) {
+            let mut file_paths = entries
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .collect::<Vec<_>>();
+            file_paths.sort();
+
+            for file_path in file_paths {
+                if let Ok(f) = File::open(file_path) {
                     let mut input = String::new();
                     let mut output = String::new();
                     let mut is_input = true;
