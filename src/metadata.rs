@@ -18,7 +18,6 @@ pub(crate) fn cargo_metadata(manifest_path: Option<&Path>, cwd: &Path) -> anyhow
 pub(crate) trait MetadataExt {
     fn all_members(&self) -> Vec<&Package>;
     fn query_for_member<'a>(&'a self, spec: Option<&str>) -> anyhow::Result<&'a Package>;
-    fn find_bin<'a>(&'a self, bin_name: &str) -> anyhow::Result<(&'a Target, &'a Package)>;
 }
 
 impl MetadataExt for Metadata {
@@ -61,13 +60,6 @@ impl MetadataExt for Metadata {
             let spec = spec.expect("should be present here");
             format!("`{}` is not a member of the workspace", spec)
         })
-    }
-
-    fn find_bin<'a>(&'a self, bin_name: &str) -> anyhow::Result<(&'a Target, &'a Package)> {
-        all_members(self)
-            .flat_map(|p| all_bins(p).map(move |t| (t, p)))
-            .find(|(Target { name, .. }, _)| name == bin_name)
-            .with_context(|| format!("no bin target named `{}`", bin_name))
     }
 }
 

@@ -814,39 +814,6 @@ fn warmup_for(metadata: &Metadata, specs: Option<&[impl AsRef<str>]>) -> Result<
 }
 
 #[derive(StructOpt)]
-struct GenBinaryOpt {
-    /// Problem ID to make binary
-    problem_id: String,
-    /// [cargo] Path to Cargo.toml
-    #[structopt(long, value_name("PATH"))]
-    manifest_path: Option<PathBuf>,
-    /// Output filename (default: <problem-id>-bin.rs)
-    #[structopt(long, short)]
-    output: Option<PathBuf>,
-    /// Max column number of generated binary
-    #[structopt(long, short)]
-    column: Option<usize>,
-    /// Do not use UPX even if it is available
-    #[structopt(long)]
-    no_upx: bool,
-}
-
-fn gen_binary(opt: GenBinaryOpt) -> Result<()> {
-    let cwd = env::current_dir().with_context(|| "failed to get CWD")?;
-    let metadata = metadata::cargo_metadata(opt.manifest_path.as_deref(), &cwd)?;
-    let (target, package) = metadata.find_bin(&opt.problem_id)?;
-    let config = read_config()?;
-    let src = gen_binary_source(&metadata, package, target, &config, opt.column, opt.no_upx)?;
-    let filename = opt
-        .output
-        .clone()
-        .unwrap_or_else(|| PathBuf::from(format!("{}-bin.rs", opt.problem_id)));
-    fs::write(&filename, src)?;
-    println!("Wrote code to `{}`", filename.display());
-    Ok(())
-}
-
-#[derive(StructOpt)]
 struct ResultOpt {
     /// submission ID
     submission_id: usize,
@@ -1002,8 +969,6 @@ enum OptAtCoder {
     Submit(SubmitOpt),
     /// Show submission result detail
     Result(ResultOpt),
-    /// Generate rustified binary
-    GenBinary(GenBinaryOpt),
 
     /// [WIP] Watch filesystem for automatic submission
     #[cfg(feature = "watch")]
@@ -1027,7 +992,6 @@ async fn main() -> Result<()> {
         Test(opt) => test(opt).await,
         Submit(opt) => submit(opt).await,
         Result(opt) => result(opt).await,
-        GenBinary(opt) => gen_binary(opt),
 
         #[cfg(feature = "watch")]
         Watch(opt) => watch::watch(opt).await,
