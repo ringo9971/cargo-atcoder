@@ -24,10 +24,7 @@ pub struct ContestInfo {
 #[derive(Debug)]
 pub struct Problem {
     pub id: String,
-    pub name: String,
     pub url: String,
-    pub tle: String,
-    pub mle: String,
 }
 
 #[derive(Debug, Clone)]
@@ -53,7 +50,6 @@ pub struct SubmissionResult {
     pub id: usize,
     pub date: DateTime<Utc>,
     pub problem_name: String,
-    pub user: String,
     pub language: String,
     pub score: i64,
     pub code_length: String,
@@ -78,8 +74,8 @@ pub struct CaseResult {
 
 #[derive(Debug)]
 pub enum StatusCode {
-    Waiting(WaitingCode),
-    Progress(usize, usize, Option<ResultCode>),
+    Waiting,
+    Progress,
     Done(ResultCode),
 }
 
@@ -90,12 +86,6 @@ impl StatusCode {
             _ => None,
         }
     }
-}
-
-#[derive(Debug)]
-pub enum WaitingCode {
-    WaitingForJudge,
-    WaitingForRejudge,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -137,11 +127,10 @@ impl StatusCode {
     fn from_str(s: &str) -> Option<StatusCode> {
         use ResultCode::*;
         use StatusCode::*;
-        use WaitingCode::*;
 
         match s {
-            "WJ" => return Some(Waiting(WaitingForJudge)),
-            "WR" => return Some(Waiting(WaitingForRejudge)),
+            "WJ" => return Some(Waiting),
+            "WR" => return Some(Waiting),
             _ => (),
         }
 
@@ -151,17 +140,14 @@ impl StatusCode {
         let re = Regex::new(r"^(\d+) */ *(\d+) *(.*)$").unwrap();
 
         if let Some(caps) = re.captures(s) {
-            let cur = caps[1].parse().unwrap();
-            let total = caps[2].parse().unwrap();
-
             let rest = caps[3].trim();
             if rest.is_empty() {
-                return Some(Progress(cur, total, None));
+                return Some(Progress);
             }
 
             let code = Self::from_str(rest)?;
-            if let Done(code) = code {
-                return Some(Progress(cur, total, Some(code)));
+            if let Done(_code) = code {
+                return Some(Progress);
             } else {
                 panic!("Invalid result status code: `{}`", s);
             }
@@ -326,16 +312,8 @@ impl AtCoder {
             let mut it = row.select(&sel_td);
             let c1 = it.next().unwrap();
             let c2 = it.next().unwrap();
-            let c3 = it.next().unwrap();
-            let c4 = it.next().unwrap();
 
             let id = c1
-                .select(&Selector::parse("a").unwrap())
-                .next()
-                .unwrap()
-                .inner_html();
-
-            let name = c2
                 .select(&Selector::parse("a").unwrap())
                 .next()
                 .unwrap()
@@ -349,15 +327,9 @@ impl AtCoder {
                 .attr("href")
                 .unwrap();
 
-            let tle = c3.inner_html();
-            let mle = c4.inner_html();
-
             problems.push(Problem {
                 id: id.trim().to_owned(),
-                name: name.trim().to_owned(),
                 url: url.trim().to_owned(),
-                tle: tle.trim().to_owned(),
-                mle: mle.trim().to_owned(),
             });
         }
 
@@ -652,7 +624,6 @@ impl AtCoder {
                 .as_text()?
                 .trim()
                 .to_owned();
-            let user = it.next()?.inner_html().trim().to_owned();
             let language = it.next()?.inner_html().trim().to_owned();
             let score: i64 = it.next()?.inner_html().trim().to_owned().parse().ok()?;
             let code_length = it.next()?.inner_html().trim().to_owned();
@@ -669,7 +640,6 @@ impl AtCoder {
                 id: submission_id,
                 date,
                 problem_name,
-                user,
                 language,
                 score,
                 code_length,
