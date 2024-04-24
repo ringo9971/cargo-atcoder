@@ -214,7 +214,7 @@ async fn test(opt: TestOpt) -> Result<()> {
         return test_custom(package, &problem_id, opt.release);
     }
 
-    let test_cases = atc.test_cases(&problem.url).await?;
+    let test_cases = atc.test_cases(&problem.url, &problem_id).await?;
 
     for &cn in opt.case_num.iter() {
         if cn == 0 || cn > test_cases.len() {
@@ -584,7 +584,7 @@ async fn submit(opt: SubmitOpt) -> Result<()> {
         true
     } else {
         let test_cases = atc
-            .test_cases(&problem.url)
+            .test_cases(&problem.url, &problem_id)
             .await?
             .into_iter()
             .enumerate()

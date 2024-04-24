@@ -4,8 +4,10 @@ use chrono::{DateTime, Utc};
 use itertools::Itertools as _;
 use regex::Regex;
 use scraper::{element_ref::ElementRef, Html, Selector};
-use std::fmt;
-use std::path::Path;
+use std::fs::File;
+use std::io::{self, BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+use std::{fmt, fs};
 use url::Url;
 
 const ATCODER_ENDPOINT: &str = "https://atcoder.jp";
@@ -381,55 +383,102 @@ impl AtCoder {
         Ok(ContestInfo { problems })
     }
 
-    pub async fn test_cases(&self, problem_url: &str) -> Result<Vec<TestCase>> {
-        let doc = self.http_get(problem_url).await?;
+    fn write_examples(
+        &self,
+        examples_dir: &Path,
+        inputs: &[String],
+        outputs: &[String],
+    ) -> io::Result<()> {
+        for i in 0..inputs.len() {
+            let file_name = examples_dir.join((i + 1).to_string());
+            if let Ok(mut file) = File::create(&file_name) {
+                file.write_all(inputs[i].as_bytes())?;
+                file.write_all("\n\n".as_bytes())?;
+                file.write_all(outputs[i].as_bytes())?;
+            }
+        }
+        Ok(())
+    }
 
-        let doc = Html::parse_document(&doc);
+    fn read_examples_in_dir(&self, dir: &PathBuf) -> (Vec<String>, Vec<String>) {
+        let mut inputs = vec![];
+        let mut outputs = vec![];
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                if let Ok(f) = File::open(format!(
+                    "{}/{}",
+                    dir.to_string_lossy(),
+                    entry.file_name().to_string_lossy()
+                )) {
+                    let mut input = String::new();
+                    let mut output = String::new();
+                    let mut is_input = true;
+                    for line in BufReader::new(f).lines().map_while(Result::ok) {
+                        if line.is_empty() {
+                            is_input = false;
+                            continue;
+                        }
+                        if is_input {
+                            input.push_str(&line);
+                            input.push('\n');
+                        } else {
+                            output.push_str(&line);
+                            output.push('\n');
+                        }
+                    }
+                    inputs.push(input);
+                    outputs.push(output);
+                }
+            }
+        }
+        (inputs, outputs)
+    }
 
-        let h3_sel = Selector::parse("h3").unwrap();
-
+    pub async fn test_cases(&self, problem_url: &str, problem_id: &str) -> Result<Vec<TestCase>> {
         let mut inputs_ja = vec![];
         let mut outputs_ja = vec![];
         let mut inputs_en = vec![];
         let mut outputs_en = vec![];
 
-        for r in doc.select(&h3_sel) {
-            let p = ElementRef::wrap(r.parent().unwrap()).unwrap();
-            let label = p.select(&h3_sel).next().unwrap().inner_html();
-            let label = label.trim();
-            // dbg!(r.parent().unwrap().first_child().unwrap().value());
+        let examples_dir: PathBuf = format!("./examples/{}", problem_id).into();
+        let is_scrape = !examples_dir.exists();
+        if is_scrape {
+            let doc = self.http_get(problem_url).await?;
 
-            // let label = r
-            //     .prev_sibling()
-            //     .unwrap()
-            //     .first_child()
-            //     .unwrap()
-            //     .value()
-            //     .as_text()
-            //     .unwrap();
+            let doc = Html::parse_document(&doc);
 
-            let f = || {
-                p.select(&Selector::parse("pre").unwrap())
-                    .next()
-                    .unwrap()
-                    .text()
-                    .exactly_one()
-                    .map(|s| s.trim().to_owned())
-                    .unwrap_or_default()
-            };
-            if label.starts_with("入力例") {
-                inputs_ja.push(f());
-            }
-            if label.starts_with("出力例") {
-                outputs_ja.push(f());
-            }
+            let h3_sel = Selector::parse("h3").unwrap();
 
-            if label.starts_with("Sample Input") {
-                inputs_en.push(f());
+            for r in doc.select(&h3_sel) {
+                let p = ElementRef::wrap(r.parent().unwrap()).unwrap();
+                let label = p.select(&h3_sel).next().unwrap().inner_html();
+                let label = label.trim();
+
+                let f = || {
+                    p.select(&Selector::parse("pre").unwrap())
+                        .next()
+                        .unwrap()
+                        .text()
+                        .exactly_one()
+                        .map(|s| s.trim().to_owned())
+                        .unwrap_or_default()
+                };
+                if label.starts_with("入力例") {
+                    inputs_ja.push(f());
+                }
+                if label.starts_with("出力例") {
+                    outputs_ja.push(f());
+                }
+
+                if label.starts_with("Sample Input") {
+                    inputs_en.push(f());
+                }
+                if label.starts_with("Sample Output") {
+                    outputs_en.push(f());
+                }
             }
-            if label.starts_with("Sample Output") {
-                outputs_en.push(f());
-            }
+        } else {
+            (inputs_ja, outputs_ja) = self.read_examples_in_dir(&examples_dir);
         }
 
         let (inputs, outputs) = if !inputs_ja.is_empty() && inputs_ja.len() == outputs_ja.len() {
@@ -446,6 +495,11 @@ impl AtCoder {
                 outputs_en.len(),
             );
         };
+
+        if is_scrape {
+            fs::create_dir_all(&examples_dir)?;
+            self.write_examples(&examples_dir, &inputs, &outputs)?;
+        }
 
         let mut ret = vec![];
         for i in 0..inputs.len() {
